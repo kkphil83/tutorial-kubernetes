@@ -1,0 +1,566 @@
+= StatefulSets
+:watch-terminal: Terminal#2
+
+Kubernetes에서 StatefulSet(상태 저장 세트)과 DaemonSet(데몬 세트)는 Pod 개수만 유지하는 ReplicaSet과 다르게 특정한 목적을 가진 Pod 관리 컨트롤러입니다.
+
+StatefulSet은 주로 데이터 상태를 유지해야 하는 Pod (DB, 메시지 큐 등)를 배포할 때 사용하고, +
+DaemonSet은 모든 노드에서 반드시 실행되어야 하는 Pod (로그 수집, 모니터링 등)를 배포할 때 사용합니다. 
+
+이전 실습에서 주로 사용한 Deployment는 ReplicaSet 기반으로 Pod를 배포하는 데, 
+ReplicaSet이 Pod 개수만 유지하는 단순한 컨트롤러라면 StatefulSet은 각 Pod가 고유한 ID와 상태를 유지하도록 관리합니다. 
+
+* StatefulSet을 사용해야 하는 경우
+** 각 Pod가 고유한 DNS 이름을 가져야 할 때
+** 특정 Pod가 자신만의 데이터 볼륨을 가져야 할 때
+** Pod를 순서대로 배포해야 할 때 (예: myapp-0 → myapp-1)
+** Pod가 재시작될 때도 같은 ID를 유지해야 할 때
+
+`StatefulSet`을 사용하는 가장 일반적인 예 중 하나는 클러스터를 시작하기 위해 각 서버의 호스트 이름을 미리 알아야 하는 기본/보조 서버(예: 데이터베이스 클러스터)를 배포해야 하는 경우입니다. 
+
+
+[IMPORTANT]
+====
+'StatefulSet'에 액세스하려면 표준 Kubernetes _service_ 대신 Kubernetes _Headless Service_ 가 필요합니다. 이에 대해서는 아래에서 더 자세히 논의하겠습니다.
+====
+
+== 사전 구성
+
+프로젝트를 생성 후, 올바른 프로젝트에 있는지 확인하세요.
+
+
+[#kubectl-deploy-app]
+[.console-input]
+[source,bash,subs="+macros,+attributes"]
+----
+oc new-project sf-%userid%
+----
+
+[.console-output]
+[source,bash,subs="+macros,+attributes"]
+----
+namespace/sf-%userid% created
+----
+
+NOTE: `oc new-project sf-%userid%` : sf-%userid%라는 새 프로젝트(네임스페이스)를 생성합니다.
+
+[#kubectl-deploy-app]
+[.console-input]
+[source,bash,subs="+macros,+attributes"]
+----
+oc project sf-%userid%
+----
+
+[.console-output]
+[source,bash,subs="+macros,+attributes"]
+----
+Now using project "sf-%userid%" on server "https://172.30.0.1:443".
+----
+
+NOTE: `oc project sf-%userid%` : 현재 활성화된 컨텍스트의 기본 프로젝트를 sf-%userid%로 변경합니다.
+
+
+프로젝트에서 아무것도 실행되고 있지 않은지 확인하세요.
+
+[#no-resources-resource]
+[.console-input]
+[source, bash]
+----
+oc get all
+----
+
+[.console-output]
+[source,bash]
+----
+No resources found in myspace namespace.
+----
+
+무슨 일이 일어나고 있는지 관찰할 수 있도록 다른 터미널(*{watch-terminal}*) 을 열고 다양한 작업을 실행할 때 어떤 일이 일어나는지 `watch` 해 보겠습니다.
+
+:section-k8s: stateful
+
+include::partial$watching-pods-with-nodes.adoc[]
+
+
+== StatefulSet
+
+StatefulSet은 Kubernetes `StatefulSet` 리소스를 사용하여 생성됩니다.
+
+[source, yaml]
+----
+apiVersion: apps/v1beta1
+kind: StatefulSet
+metadata:
+  name: quarkus-statefulset
+  labels:
+    app: quarkus-statefulset
+spec:
+  serviceName: "quarkus" # <.>
+  replicas: 2
+  selector:
+    matchLabels:
+      app: quarkus-statefulset
+  template:
+    metadata:
+      labels:
+        app: quarkus-statefulset
+    spec:
+      containers:
+      - name: quarkus-statefulset
+        image: quay.io/rhdevelopers/quarkus-demo:v1
+        ports:
+        - containerPort: 8080
+          name: web
+----
+<.> `serviceName` 은 이 `StatefulSet` 을 관리하는 (헤드리스) 서비스의 이름입니다. 이 서비스는 StatefulSet 생성 전에 존재해야하며 StatefulSet의 네트워크 ID를 담당합니다.
+
+[#hostname-formula]
+`StatefulSet`의 모든 Pod에 대한 호스트 이름은 다음 규칙을 사용하여 예측할 수 있습니다.
+
+****
+<StatefulSet 이름>-<순번(0부터 시작)>
+****
+
+따라서 위의 StatefulSet의 첫 번째 Pod는 다음과 같은 호스트 이름을 가질 것으로 예상됩니다.
+
+****
+`quarkus-statefulset-0`
+****
+
+마지막으로 위에서 언급한 것처럼 트래픽을 StatefulSet의 Pod로 라우팅하려면 **헤드리스 서비스**도 생성해야 합니다.
+
+[source, yaml,subs="+quotes"]
+----
+apiVersion: v1
+kind: Service
+metadata:
+  name: #quarkus# #<.>
+  labels:
+    app: quarkus-statefulset
+spec:
+  ports:
+  - port: 8080
+    name: web
+  clusterIP: None #<.>
+  selector:
+    app: quarkus-statefulset
+----
+
+<.> 여기 이 부분 name이 `StatefulSet`의 `serviceName` 필드와 일치하는 것을 주목해주세요. DNS 항목을 생성하려면 둘이 서로 일치해야 합니다. 
+<.> `clusterIP` 를 `None`으로 설정하면 서비스가 "헤드리스"가 됩니다.
+
+
+다음 명령어를 적용하여 적절한 `StatefulSet` 와 헤드리스 서비스를 생성합니다.
+
+
+[.console-input]
+[source,bash,subs="+macros,+attributes"]
+----
+cat <<EOF | oc apply -f -
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: quarkus-statefulset
+  labels:
+    app: quarkus-statefulset
+spec:
+  selector:
+    matchLabels:
+      app: quarkus-statefulset
+  serviceName: "quarkus"
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: quarkus-statefulset
+    spec:
+      containers:
+      - name: quarkus-statefulset
+        image: quay.io/rhdevelopers/quarkus-demo:v1
+        ports:
+        - containerPort: 8080
+          name: web
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: quarkus
+  labels:
+    app: quarkus-statefulset
+spec:
+  ports:
+  - port: 8080
+    name: web
+  clusterIP: None
+  selector:
+    app: quarkus-statefulset
+---
+EOF
+----
+
+그러면 터미널에 다음이 표시됩니다.
+
+[tabs]
+====
+{watch-terminal}::
++
+--
+[.console-output]
+[source,bash,subs="+quotes"]
+----
+NAME                     READY   STATUS    RESTARTS   AGE
+#quarkus-statefulset-0#   1/1     Running   0          12s
+----
+--
+====
+
+예상한 대로 이 Pod 이름은 첫 번째 인스턴스이므로 `-0` 이 포함되어 있습니다. + 
+
+
+이제 Stateful 세트 자체를 살펴보겠습니다.
+
+[.console-input]
+[source,bash,subs="+macros,+attributes"]
+----
+oc get statefulsets
+----
+
+[.console-output]
+[source,bash]
+----
+NAME                  READY   AGE
+quarkus-statefulset   1/1     109s
+----
+
+`Deployment` 와 마찬가지로 `statefulsets` 를 확장할 수 있습니다.
+
+[.console-input]
+[source,bash,subs="+macros,+attributes"]
+----
+oc scale sts \ #<.>
+  quarkus-statefulset --replicas=3
+----
+<.> `sts` 는 `statefulset` API 리소스의 단축 이름입니다.
+
+
+watch 터미널을 확인하면 다음과 같습니다.
+
+[tabs]
+====
+{watch-terminal}::
++
+--
+[.console-output]
+[source,bash,subs="+quotes"]
+----
+NAME                    READY   STATUS    RESTARTS   AGE
+quarkus-statefulset-0   1/1     Running   0          95s
+#quarkus-statefulset-1#   1/1     Running   0          2s
+#quarkus-statefulset-2#   1/1     Running   0          1s
+----
+--
+====
+
+Pod의 이름 계속해서 <<hostname-formula, 위에서 호출한 것과 동일한 명명법>>을 사용합니다.
+
+또한 Kubernetes의 이벤트 순서를 확인하면 이름이 `-1` 로 끝나는 Pod가 `-2` 로 끝나는 Pod보다 **먼저** 생성되는 것을 알 수 있습니다.
+즉, 순차적으로 생성됩니다.
+
+[.console-input]
+[source,bash,subs="+macros,+attributes"]
+----
+oc get events --sort-by=.metadata.creationTimestamp
+----
+
+[.console-output]
+[source,bash]
+----
+4m4s        Normal   SuccessfulCreate          statefulset/quarkus-statefulset   create Pod quarkus-statefulset-1 in StatefulSet quarkus-statefulset successful
+4m3s        Normal   Pulled                    pod/quarkus-statefulset-1         Container image "quay.io/rhdevelopers/quarkus-demo:v1" already present on machine
+4m3s        Normal   Scheduled                 pod/quarkus-statefulset-2         Successfully assigned default/quarkus-statefulset-2 to kube
+4m3s        Normal   Created                   pod/quarkus-statefulset-1         Created container quarkus-statefulset
+4m3s        Normal   Started                   pod/quarkus-statefulset-1         Started container quarkus-statefulset
+4m3s        Normal   SuccessfulCreate          statefulset/quarkus-statefulset   create Pod quarkus-statefulset-2 in StatefulSet quarkus-statefulset successful
+4m2s        Normal   Pulled                    pod/quarkus-statefulset-2         Container image "quay.io/rhdevelopers/quarkus-demo:v1" already present on machine
+4m2s        Normal   Created                   pod/quarkus-statefulset-2         Created container quarkus-statefulset
+4m2s        Normal   Started                   pod/quarkus-statefulset-2         Started container quarkus-statefulset
+----
+
+=== 안정적인 네트워크 ID
+
+이전에 **헤드리스 서비스**를 만든 이유는 StatefulSet의 Pod를 클러스터 내에서 찾을 수 있도록 하기 위해서였습니다 .+ 
+(클러스터 외부에서 서비스에 연결하려면 <<Exposing StatefulSets,Exposing StatefulSets>> 참조).  
+
+일반적인 Kubernetes **Service**는 연결된 Pod들에 공통 DNS 이름을 제공하며, 개별 Pod를 구별하지 않고 클러스터 IP를 통해 라운드로빈 로드밸런싱을 수행합니다.
+반면 헤드리스 서비스는 각 Pod에 항상 동일한 개별 DNS 이름을 제공하기 때문에, 특정 Pod를 안정적으로 직접 호출할 수 있습니다.
+
+이렇게 안정적인 네트워크 ID를 제공함으로써 StatefulSet 내 각 Pod가 서로를 구분하여 인식할 수 있고, Pod 간 마스터-슬레이브, 리더-팔로워 구조를 원활하게 지원하게 됩니다.
+
+헤드리스 서비스를 통해 각 Pod는 '$(podname).$(관리 서비스의 도메인)' 형식의 DNS 이름을 얻습니다. +
+여기서 '관리 서비스의 도메인'부분은 StatefulSet의 `serviceName` 필드를 통해 정의됩니다.footnote:[See also the official Kubernetes documentation link:https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#stable-network-id[here]]
+
+StatefulSet이 존재하는 프로젝트에서 Pod를 생성하고 `nslookup` 을 수행하여 이를 테스트할 수 있습니다. 
+
+다음 명령을 실행하여 `nslookup` 쿼리를 실행할 수 있는 Pod를 만듭니다.
+
+[.console-input]
+[source,bash,subs="+macros,+attributes"]
+----
+oc run -it --restart=Never --rm --image busybox:1.28 dns-test 
+----
+
+TIP: `oc run` 은 pod를 생성하는 명령어입니다. +
+`-i` (interactive) 옵션 : Pod 실행 중 표준 입력(stdin)을 유지. +
+`-t` (tty) 옵션 : Pod 실행 중 가상 터미널(tty) 할당 +
+`-rm` 옵션 : Pod 실행이 종료되면 Pod를 자동으로 삭제합니다. 이 옵션은 일회성 테스트를 위한 작업에서 유용합니다. +
+`--restart=Never` 옵션 : 생성된 Pod가 종료되더라도 재시작하지 않도록 설정합니다. +
+`--image busybox:1.28` : busybox:1.28 이미지를 사용하여 컨테이너를 실행합니다. busybox는 간단한 유틸리티 도구들이 포함된 경량 이미지로, 네트워크 및 시스템 진단에 자주 사용됩니다.
+
+컨테이너 내에서 다음 명령을 실행하여 StatefulSet의 Pod를 찾을 수 있는지 확인하세요.
+
+[tabs]
+====
+Container::
++
+--
+[.console-input]
+[source,bash,subs="+macros,+attributes"]
+----
+nslookup quarkus-statefulset-0.quarkus
+----
+
+그러면 다음과 같은 결과가 출력됩니다(보고된 IP 주소는 다양함).
+
+[.console-output]
+[source,bash,subs="+macros,+attributes,+quotes"]
+----
+Server:    10.96.0.10
+Address 1: 10.96.0.10 kube-dns.kube-system.svc.cluster.local
+
+Name:      quarkus-statefulset-0.quarkus
+Address 1: 172.17.0.3 #quarkus-statefulset-0.quarkus.myspace.svc.cluster.local# #<.>
+----
+<.> 전체 주소는 `$(podname).$(governing service domain).$(namespace)`.svc.cluster.local입니다.
+
+이제 다음 명령을 실행하여 Pod를 종료할 수 있습니다.
+
+[.console-input]
+[source,bash,subs="+macros,+attributes"]
+----
+exit
+----
+--
+====
+
+따라서 헤드리스 서비스의 도움으로, 우리는 StatefulSet 및 헤드리스 서비스에 의해 공식화된 내부 DNS 이름을 사용하여 StatefulSet의 모든 Pod를 찾을 수 있습니다.
+
+
+== Exposing StatefulSets
+
+StatefulSet은 헤드리스 서비스를 사용하고 있기 때문에 클러스터 _외부_ 에서 Pod에 액세스하는 데 사용할 수 있는 외부 IP가 할당되지 않았습니다.
+
+[.console-input]
+[source,bash,subs="+macros,+attributes"]
+----
+oc describe svc quarkus
+----
+
+[.console-output]
+[source,bash,subs="+macros,+attributes,+quotes"]
+----
+Name:              quarkus
+Namespace:         sf-%userid%
+Labels:            app=quarkus-statefulset
+Annotations:       <none>
+Selector:          app=quarkus-statefulset
+Type:              ClusterIP
+IP Family Policy:  SingleStack
+IP Families:       IPv4
+#IP:                None#
+#IPs:               None#
+Port:              web  8080/TCP
+TargetPort:        8080/TCP
+Endpoints:         172.17.0.3:8080,172.17.0.4:8080,172.17.0.5:8080
+Session Affinity:  None
+Events:            <none>
+----
+
+대신 (내부) 엔드포인트만 할당되어 있습니다.
+
+[.console-input]
+[source,bash,subs="+macros,+attributes"]
+----
+oc describe endpoints quarkus
+----
+
+[.console-output]
+[source,bash,subs="+macros,+attributes"]
+----
+Name:         quarkus-statefulset
+Namespace:    myspace
+Labels:       app=quarkus-statefulset
+              service.kubernetes.io/headless=
+Annotations:  endpoints.kubernetes.io/last-change-trigger-time: 2021-07-20T04:45:21Z
+Subsets:
+  Addresses:          172.17.0.3,172.17.0.4,172.17.0.5
+  NotReadyAddresses:  <none>
+  Ports:
+    Name  Port  Protocol
+    ----  ----  --------
+    web   8080  TCP
+
+Events:  <none>
+----
+
+`StatefulSet` 은 (헤드리스가 아닌) 일반적인 Service에 의해 추상화 되는 대신 예측 가능한 DNS 이름으로 특정 Pod를 참조할 수 있다는 점에서 의미가 있습니다. 
+DNS 이름을 통해 Pod에 액세스하는 기능을 지원하기 위해, kubernetes는 모든 `StatefulSet` Pod에 서비스에 대한 선택기로 사용할 수 있는 레이블을 자동으로로 붙입니다.
+
+[.console-input]
+[source,bash,subs="+macros,+attributes"]
+----
+oc describe pod quarkus-statefulset-2
+----
+
+[.console-output]
+[source,bash,subs="+macros,+attributes,+quotes"]
+----
+Name:         quarkus-statefulset-2
+Namespace:    myspace
+Priority:     0
+Node:         devnation/192.168.49.2
+Start Time:   Tue, 20 Jul 2021 04:45:04 +0000
+Labels:       app=quarkus-statefulset
+              controller-revision-hash=quarkus-statefulset-6bf5d59699
+              #statefulset.kubernetes.io/pod-name=quarkus-statefulset-2#
+Annotations:  <none>
+----
+
+위에 강조된 이 레이블을 사용해서 특정 Pod를 서비스와 연결할 수 있습니다. 
+
+[.console-output]
+[source,yaml,subs="+macros,+attributes"]
+----
+apiVersion: v1
+kind: Service
+metadata:
+  name: quarkus-statefulset-2
+spec:
+  type: LoadBalancer #<.>
+  externalTrafficPolicy: Local #<.>
+  selector:
+    statefulset.kubernetes.io/pod-name: quarkus-statefulset-2 #<.>
+  ports:
+  - port: 8080
+    name: web
+----
+<.> 이 서비스가 LoadBalancer를 통해 노출되어야 함을 나타냅니다.
+<.> 트래픽을 노드로 직접 라우팅하여 과도한 홉을 방지합니다.
+<.> Kubernetes StatefulSet 기능이 자동으로 제공하는 레이블을 활용하는 Selector
+
+서비스를 검토 완료하였다면 아래 명령어로 생성합니다.
+
+[.console-input]
+[source,bash,subs="+macros,+attributes"]
+----
+cat <<EOF | oc create -f -
+apiVersion: v1
+kind: Service
+metadata:
+  name: quarkus-statefulset-2
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: Local
+  selector:
+    statefulset.kubernetes.io/pod-name: quarkus-statefulset-2
+  ports:
+  - port: 8080
+    name: web
+EOF
+----
+
+그리고 터미널에서 요청을 보냅니다.
+
+[.console-input]
+[source,bash,subs="+macros,+attributes"]
+----
+IP=$(oc get service quarkus-statefulset-2 -o jsonpath="{.status.loadBalancer.ingress[0].hostname}")
+----
+
+[.console-input]
+[source,bash,subs="+macros,+attributes"]
+----
+PORT=$(oc get service quarkus-statefulset-2 -o jsonpath="{.spec.ports[*].port}")
+----
+
+[#get-config-configmaps]
+[.console-input]
+[source,bash,subs="+macros,+attributes"]
+----
+curl $IP:$PORT
+----
+
+NOTE: LoadBalancer 타입 서비스는 curl에 성공할 때까지 약간 시간이 걸릴 수 있습니다.
+
+
+[.console-output]
+[source,bash,subs="+macros,+attributes,+quotes"]
+----
+Supersonic Subatomic Java with Quarkus quarkus-statefulset-2:1 #<.>
+----
+<.> `quarkus-statefulset-2` 의 호스트 이름을 확인하세요. 이는 Pod가 예측 가능한 호스트 이름을 얻을 수 있도록 처음에 StatefulSet을 사용한 이유 중 일부입니다.
+
+== Scale Down and Cleanup
+
+마지막으로 인스턴스를 3개에서 2개로 축소하면, ReplicaSet과 달리 종료되는 인스턴스가 무작위로 선택되지 않고 가장 나중에 시작된 인스턴스(`quarkus-statefulset-2`)가 종료됩니다.
+
+[.console-input]
+[source,bash,subs="+macros,+attributes"]
+----
+oc scale sts quarkus-statefulset --replicas=2
+----
+
+[tabs]
+====
+{watch-terminal}::
++
+--
+[.console-output]
+[source,bash,subs="+quotes"]
+----
+NAME                    READY   STATUS        RESTARTS   AGE
+quarkus-statefulset-0   1/1     Running       0          9m22s
+quarkus-statefulset-1   1/1     Running       0          7m49s
+#quarkus-statefulset-2   0/1     Terminating   0          7m48s#
+----
+--
+====
+
+StatefulSet 및 Service를 사용할 때 이로 인해 문제가 발생할 수 있으므로 주의하세요. 
+위에서 생성한 Service는 모든 Pod가 아닌 특정 Pod를 정확하게 바라보고 있기 때문에, 지금 다시 호출하려고 하면 에러가 발생합니다. 
+
+
+[.console-input]
+[source,bash,subs="+macros,+attributes"]
+----
+curl $IP:$PORT
+----
+
+You'll get an error (perhaps like this one)
+
+[.console-output]
+[source,bash,subs="+macros,+attributes"]
+----
+curl: (52) Empty reply from server
+----
+
+=== Clean Up
+
+이제 이 섹션의 끝에 도달했습니다. 
+생성한 리소스를를 삭제하여 Statefulset의 모든 측면을 정리할 수 있습니다.
+
+[.console-input]
+[source,bash,subs="+macros,+attributes"]
+----
+oc delete service quarkus-statefulset-2
+oc delete service quarkus
+oc delete statefulset quarkus-statefulset 
+----

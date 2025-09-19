@@ -1,0 +1,6 @@
+name: kubernetes-tutorial
+title: Module 2 - KUBERNETES
+version: main
+nav:
+  - modules/ROOT/nav.adoc
+start_page: ROOT:1-introduction.adoc

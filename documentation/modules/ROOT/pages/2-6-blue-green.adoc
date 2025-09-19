@@ -1,0 +1,339 @@
+= Blue/Green 배포
+
+Kubernetes에서는 레이블(Labels)을 이용해 특정 파드에 트래픽을 라우팅할 수 있습니다.
+이를 통해 블루-그린 배포(Blue-Green Deployment)나 A/B 테스트 또한 쉽게 구현할 수 있습니다.
+
+Blue/Green 배포에 대한 자세한 설명은 https://martinfowler.com/bliki/BlueGreenDeployment.html[여기]에서 확인할 수 있습니다.
+
+
+== 사전 구성
+
+이번 실습에서는 2가지 버전의 애플리케이션을 동시에 실행되도록 배포하고, 트래픽을 새 버전의 애플리케이션으로 전환해보겠습니다.
+
+실습 진행 전에 올바른 프로젝트에 있는지 확인하세요.
+
+* *Terminal#1에서 작업*
+
+[#kubectl-deploy-app]
+[.console-input]
+[source,bash,subs="+macros,+attributes"]
+----
+oc new-project bg-%userid%
+----
+
+[.console-output]
+[source,bash,subs="+macros,+attributes"]
+----
+namespace/bg-%userid% created
+----
+
+NOTE: `oc new-project bg-%userid%` : bg-%userid%라는 새 프로젝트(네임스페이스)를 생성합니다.
+
+[#kubectl-deploy-app]
+[.console-input]
+[source,bash,subs="+macros,+attributes"]
+----
+oc project bg-%userid%
+----
+
+[.console-output]
+[source,bash,subs="+macros,+attributes"]
+----
+Now using project "bg-%userid%" on server "https://172.30.0.1:443".
+----
+
+NOTE: `oc project bg-%userid%` : 현재 활성화된 컨텍스트의 기본 프로젝트를 bg-%userid%로 변경합니다.
+
+
+
+다른 것이 배포되지 않았는지 확인하세요.:
+
+[#no-resources-blue-green]
+[.console-input]
+[source, bash]
+----
+oc get all
+----
+
+[.console-output]
+[source,bash]
+----
+No resources found in bg-%userid% namespace.
+----
+
+== 샘플 앱 배포
+
+샘플 애플리케이션 myboot를 배포해보겠습니다. 애플리케이션 호출 시, 
+V1은 `Aloha from Spring Boot!` 메시지를, 
+V2는 `Bonjour from Spring Boot!` 메시지를 출력합니다. 
+
+`myboot` V1 배포:
+
+[#deploy-v1-blue-green]
+[.console-input]
+[source, bash]
+----
+cat <<EOF | oc apply -f -
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: myboot
+  name: myboot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: myboot
+  template:
+    metadata:
+      labels:
+        app: myboot
+    spec:
+      containers:
+      - name: myboot
+        image: quay.io/rhdevelopers/myboot:v1
+        ports:
+          - containerPort: 8080
+        resources:
+          requests: 
+            memory: "300Mi" 
+            cpu: "250m" # 1/4 core
+          limits:
+            memory: "900Mi"
+            cpu: "1000m" # 1 core
+EOF
+----
+
+Pod의 복제본 개수를 2개로 늘립니다.
+
+[#scale-v1-blue-green]
+[.console-input]
+[source, bash]
+----
+oc scale deployment/myboot --replicas=2
+----
+
+
+서비스 배포:
+
+[#deploy-service-blue-green]
+[.console-input]
+[source, bash]
+----
+cat <<EOF | oc apply -f -
+apiVersion: v1
+kind: Service
+metadata:
+  name: myboot
+  labels:
+    app: myboot
+spec:
+  ports:
+  - name: http
+    port: 8080
+  selector:
+    app: myboot
+EOF
+----
+
+
+* *Terminal#2에서 작업*
+
+[#kubectl-deploy-app]
+[.console-input]
+[source,bash,subs="+macros,+attributes"]
+----
+oc project bg-%userid%
+----
+
+실시간으로 pod 상태 확인 ( `show-labels` 옵션을 함께 사용):
+
+[#labels-v1-blue-green]
+[.console-input]
+[source, bash]
+----
+watch oc get pods --show-labels
+----
+
+* *Terminal#3에서 작업*
+
+[#kubectl-deploy-app]
+[.console-input]
+[source,bash,subs="+macros,+attributes"]
+----
+oc project bg-%userid%
+----
+
+Service의 Cluster IP를 가져옵니다.
+
+[.console-input]
+[source,bash,subs="+macros,+attributes"]
+----
+IP=$(oc get service myboot -o jsonpath="{.spec.clusterIP}")
+----
+
+
+[.console-input]
+[source,bash,subs="+macros,+attributes"]
+----
+PORT=$(oc get service myboot -o jsonpath="{.spec.ports[*].port}")
+----
+
+
+Poll the endpoint:
+
+[#poll-endpoint]
+[.console-input]
+[source,bash,subs="+macros,+attributes"]
+----
+while true
+do curl $IP:$PORT
+sleep 0.8
+done
+----
+
+[.console-output]
+[source,bash]
+----
+Aloha from Spring Boot! 2 on myboot-76b66dc545-s6j7c
+Aloha from Spring Boot! 1 on myboot-76b66dc545-nqx59
+Aloha from Spring Boot! 2 on myboot-76b66dc545-nqx59
+----
+
+
+`myboot` V2 배포:
+* my-boot-next라는 새로운 버전(v2) 배포
+* my-boot-next는 기존 `v1`과 다른 레이블을 사용하여 독립적으로 실행됨
+
+[#deploy-v2-blue-green]
+[.console-input]
+[source, bash]
+----
+cat <<EOF | oc apply -f -
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: myboot-next
+  name: myboot-next
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: myboot-next
+  template:
+    metadata:
+      labels:
+        app: myboot-next
+    spec:
+      containers:
+      - name: myboot
+        image: quay.io/rhdevelopers/myboot:v2
+        ports:
+          - containerPort: 8080
+        resources:
+          requests: 
+            memory: "300Mi" 
+            cpu: "250m" # 1/4 core
+          limits:
+            memory: "900Mi"
+            cpu: "1000m" # 1 core
+EOF
+----
+
+새 Pod/배포에 새 코드가 포함되어 있는지 확인하세요.
+
+[#exec-v2-blue-green]
+[.console-input]
+[source, bash]
+----
+PODNAME=$(oc get pod -l app=myboot-next -o name)
+----
+
+[#exec-v2-blue-green]
+[.console-input]
+[source, bash]
+----
+oc exec -it $PODNAME -- curl localhost:8080
+----
+
+NOTE: Pod 생성 직후 위의 명령어를 실행하면 에러가 발생할 수 있습니다. 에러 발생 시 잠시 후에 다시 시도하시면 됩니다.
+
+V2 애플리케이션에서는 아래와 같이 Bonjour로 시작되는 메시지가 표시됩니다.
+
+[.console-output]
+[source,bash]
+----
+Bonjour from Spring Boot! 1 on myboot-next-66b68c6659-ftcjr
+----
+
+이제 Service가 새 Pod(myboot-next)를 가리키도록 업데이트하고 Green으로 전환하세요.
+
+[#patch-service-green]
+[.console-input]
+[source,bash,subs="+macros,+attributes"]
+----
+oc patch svc/myboot -p '{"spec":{"selector":{"app":"myboot-next"}}}'
+----
+
+그리고 Terminal#3을 확인하면, 아래와 같이 V2 애플리케이션으로 라우팅되면서 메시지가 변경된 것을 확인하실 수 있습니다. 
+
+[.console-output]
+[source,bash]
+----
+Aloha from Spring Boot! 240 on myboot-d78fb6d58-929wn
+Bonjour from Spring Boot! 2 on myboot-next-66b68c6659-ftcjr
+Bonjour from Spring Boot! 3 on myboot-next-66b68c6659-ftcjr
+Bonjour from Spring Boot! 4 on myboot-next-66b68c6659-ftcjr
+----
+
+
+다시 이전 버전으로 돌아가고 싶다면,
+이전 Pod(myboot)를 가리키도록 서비스를 업데이트하고 Blue로 전환합니다.
+
+[#patch-service-blue]
+[.console-input]
+[source,bash,subs="+macros,+attributes"]
+----
+oc patch svc/myboot -p '{"spec":{"selector":{"app":"myboot"}}}'
+----
+
+[.console-output]
+[source,bash]
+----
+Bonjour from Spring Boot! 17 on myboot-next-66b68c6659-ftcjr
+Aloha from Spring Boot! 257 on myboot-d78fb6d58-vqvlb
+Aloha from Spring Boot! 258 on myboot-d78fb6d58-vqvlb
+----
+
+== 정리
+
+✅ 블루-그린 배포의 핵심:
+
+* `oc patch` 명령어를 사용해 빠르게 버전 전환 가능
+* 무중단 배포(Zero Downtime Deployment) 가능
+* 필요할 경우 기존 버전(v1) 제거 가능
+
+💡 블루-그린 배포는 빠르고 간단한 배포 전략으로, 운영 중인 서비스에 영향을 주지 않고 신규 버전을 배포할 수 있는 효과적인 방법입니다. 
+
+
+
+== Clean Up
+
+실습을 마쳤으면 생성했던 리소스를 삭제합니다. 
+
+[#clean]
+[.console-input]
+[source,bash,subs="+macros,+attributes"]
+----
+oc delete service myboot
+----
+
+
+[#clean]
+[.console-input]
+[source,bash,subs="+macros,+attributes"]
+----
+oc delete deployment myboot myboot-next
+----

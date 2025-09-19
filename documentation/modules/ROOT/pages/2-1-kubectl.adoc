@@ -1,0 +1,125 @@
+= oc / kubectl : 쿠버네티스 클라이언트
+
+
+== Kubernetes 및 OpenShift 명령줄 인터페이스
+웹 콘솔에서 kubectl 또는 oc CLI(명령줄 인터페이스)를 사용하여 OpenShift 클러스터를 관리할 수 있습니다. 
+두 CLI의 차이점을 아래와 같습니다.
+
+* *kubectl*
+
+kubernetes에서 기본적으로 제공 및 사용되는 CLI(CommandLine Interface)입니다. 
+Kubernetes API와 상호작용하여 클러스터를 관리하는 데에 사용됩니다.
+표준 Kubernetes 명령어를 지원하며, 모든 kubernetes 기반의 클러스터에서 동작합니다.
+
+* *oc*
+
+OpenShift에서 제공하는 CLI(CommandLine Interface)입니다. 
+Kubernetes 관리 기능 및 추가적인 기능(예: 추가 클러스터 관리명령, OpenShift 고유 리소스 관리 등)을 제공합니다.
+kubectl 명령어를 기본적으로 포함합니다.
+
+
+oc 커맨드를 사용하면 터미널에서 애플리케이션을 생성하고 Red Hat OpenShift Container Platform(RHOCP) 프로젝트를 관리할 수 있습니다. 
+OpenShift CLI는 다음과 같은 상황에 적합합니다.
+
+* 프로젝트 소스 코드를 사용하여 직접 작업
+
+* OpenShift Container Platform 작업 스크립팅
+
+* 웹 콘솔을 사용할 수 없는 경우
+
+* routes 및 deployment configs와 같은 OpenShift 리소스 작업
+
+
+NOTE: 여기서부터 실습에서 사용되는 모든 명령어는 `Lab 접속방법`에서 안내되었던 CLI 터미널 창에서 수행됩니다. 
+
+== CLI 터미널 접속
+
+OpenShift 웹콘솔의 오른쪽 상단의 웹터미널 아이콘을 클릭하여 CLI 터미널 창을 엽니다.
+그 다음 '시작'버튼을 눌러 터미널을 활성화 합니다.
+
+image::2-1.png[2-1]
+
+image::2-3.png[2-3]
+
+[[talk]]
+== 클러스터에 로그인하고, 설정을 확인
+
+NOTE: 일반적으로 클러스터에서 oc(kubectl) 명령어를 사용하기 위해서는 `oc login` 명령어를 통해 클러스터에 로그인해야 합니다. +
+이 실습에서는 OpenShift의 웹콘솔에서 제공하는 웹터미널을 사용하기 때문에(이미 웹콘솔 로그인이 되어 있기 때문에) 로그인 단계가 필요없습니다.
+
+
+명령어 박스 오른쪽에 있는 COPY 아이콘을 클릭하여 명령어 복사 후, 웹터미널에 붙여넣고 ENTER를 눌러 실행합니다.
+
+IMPORTANT: 명령어를 붙여넣을 때, OS 환경에 따라 kbd:[CTRL+V] 또는 kbd:[CTRL+SHIFT+V] 또는 kbd:[CTRL+INSERT] 키를 눌러야 합니다.+
+웹터미널에 출력된 내용을 복사하실 때는 마우스 우클릭 사용을 권장드립니다.
+
+image::copy.png[copy]
+<- 클릭
+
+[#kubectl-view-config]
+[.console-input]
+[source,bash,subs="+macros,+attributes"]
+----
+kubectl config view
+----
+
+[.console-output]
+[source,bash,subs="+macros,+attributes"]
+----
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+    server: https://172.30.0.1:443
+  name: https://172.30.0.1:443
+contexts:
+- context:
+    cluster: https://172.30.0.1:443
+    namespace: openshift-terminal
+    user: admin
+  name: admin-context
+current-context: admin-context
+kind: Config
+preferences: {}
+users:
+- name: admin
+  user:
+    token: REDACTED
+----
+NOTE: 현재 kubectl 설정 파일의 내용을 출력합니다. 여기에는 클러스터, 사용자 인증 정보, 컨텍스트 등의 정보가 포함됩니다.
+
+
+[#kubectl-view-config]
+[.console-input]
+[source,bash,subs="+macros,+attributes"]
+----
+oc config view
+----
+
+[.console-output]
+[source,bash,subs="+macros,+attributes"]
+----
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+    server: https://172.30.0.1:443
+  name: https://172.30.0.1:443
+contexts:
+- context:
+    cluster: https://172.30.0.1:443
+    namespace: openshift-terminal
+    user: admin
+  name: admin-context
+current-context: admin-context
+kind: Config
+preferences: {}
+users:
+- name: admin
+  user:
+    token: REDACTED
+----
+
+NOTE: 기본적으로 `oc` 명령어는 `kubectl` 명령을 포함하고 있기 때문에 두 명령어의 결과는 동일합니다. 또한 `oc` 명령어는 `kubectl` 에는 포함되어 있지않은 추가 리소스에 대한 명령어도 포함하고 있습니다.
+
+IMPORTANT: 앞으로의 실습에는 `oc` 명령어를 사용합니다.
