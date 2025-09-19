@@ -236,10 +236,9 @@ quarkus-statefulset   1/1     109s
 [.console-input]
 [source,bash,subs="+macros,+attributes"]
 ----
-oc scale sts \ #<.>
-  quarkus-statefulset --replicas=3
+oc scale sts quarkus-statefulset --replicas=3
 ----
-<.> `sts` 는 `statefulset` API 리소스의 단축 이름입니다.
+kbd:[sts] 는 `statefulset` API 리소스의 단축 이름입니다.
 
 
 watch 터미널을 확인하면 다음과 같습니다.
@@ -412,7 +411,7 @@ Events:  <none>
 ----
 
 `StatefulSet` 은 (헤드리스가 아닌) 일반적인 Service에 의해 추상화 되는 대신 예측 가능한 DNS 이름으로 특정 Pod를 참조할 수 있다는 점에서 의미가 있습니다. 
-DNS 이름을 통해 Pod에 액세스하는 기능을 지원하기 위해, kubernetes는 모든 `StatefulSet` Pod에 서비스에 대한 선택기로 사용할 수 있는 레이블을 자동으로로 붙입니다.
+DNS 이름을 통해 Pod에 액세스하는 기능을 지원하기 위해, kubernetes는 모든 `StatefulSet` Pod에 서비스에 대한 선택기로 사용할 수 있는 레이블을 자동으로 붙입니다.
 
 [.console-input]
 [source,bash,subs="+macros,+attributes"]
@@ -544,7 +543,7 @@ StatefulSet 및 Service를 사용할 때 이로 인해 문제가 발생할 수 �
 curl $IP:$PORT
 ----
 
-You'll get an error (perhaps like this one)
+시간이 걸려서 아래와 같은 오류 메시지를 보여줍니다.
 
 [.console-output]
 [source,bash,subs="+macros,+attributes"]

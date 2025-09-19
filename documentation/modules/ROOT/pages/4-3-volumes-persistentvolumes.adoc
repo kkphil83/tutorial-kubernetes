@@ -505,20 +505,6 @@ Jambo
 {file-watch-terminal}::
 +
 --
-[#kubectl-deploy-app]
-[.console-input]
-[source,bash,subs="+macros,+attributes"]
-----
-oc project volume-%userid%
-----
-
-[.console-output]
-[source,bash,subs="+macros,+attributes"]
-----
-Now using project "volume-%userid%" on server "https://172.30.0.1:443".
-----
-
-NOTE: `oc project volume-%userid%` : 현재 활성화된 컨텍스트의 기본 프로젝트를 volume-%userid%로 변경합니다.
 
 [.console-output]
 [source,bash,subs="+macros,+attributes"]

@@ -577,9 +577,7 @@ done
 
 * *Terminal#1*
 
-Ctrl + C 명령으로 기존에 pod 상태를 확인하는 것을 종료합니다. 
-
-그리고 Pod의 resource 요청/제한 내용을 확인합니다.
+kbd:[CTRL+c]를 눌러 Watch를 종료한 다음, Pod의 resource 요청/제한 내용을 확인합니다.
 
 [#podresources-sane-limit-resource]
 [.console-input]
