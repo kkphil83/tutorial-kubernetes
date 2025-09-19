@@ -503,13 +503,13 @@ spec:
               port: 8080
               path: /alive
           periodSeconds: 2
-          timeoutSeconds: 2
-          failureThreshold: 2
+          timeoutSeconds: 1
+          failureThreshold: 1
         readinessProbe:
           httpGet:
             path: /health
             port: 8080
-          periodSeconds: 3
+          periodSeconds: 2
 ----
 
 NOTE: 해당 probe 설정은 timeout 시간이 매우 짧은 것을 볼 수 있습니다.
@@ -547,13 +547,13 @@ spec:
               port: 8080
               path: /alive
           periodSeconds: 2
-          timeoutSeconds: 2
-          failureThreshold: 2
+          timeoutSeconds: 1
+          failureThreshold: 1
         readinessProbe:
           httpGet:
             path: /health
             port: 8080
-          periodSeconds: 3
+          periodSeconds: 2
 EOF
 ----
 
@@ -627,13 +627,13 @@ spec:
               port: 8080
               path: /alive
           periodSeconds: 2
-          timeoutSeconds: 2
-          failureThreshold: 2
+          timeoutSeconds: 1
+          failureThreshold: 1
         readinessProbe:
           httpGet:
             path: /health
             port: 8080
-          periodSeconds: 3
+          periodSeconds: 2
         startupProbe:
           httpGet:
             path: /alive

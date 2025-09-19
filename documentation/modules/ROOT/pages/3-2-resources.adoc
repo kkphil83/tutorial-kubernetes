@@ -575,7 +575,11 @@ done
 
 배포된 애플리케이션에는 `/consume` 이라는 엔드포인트가 있어서, 이 엔드포인트를 호출하면 대량의 메모리를 할당하는 동작을 수행합니다.
 
-먼저 Pod의 resource 요청/제한 내용을 확인합니다.
+* *Terminal#1*
+
+Ctrl + C 명령으로 기존에 pod 상태를 확인하는 것을 종료합니다. 
+
+그리고 Pod의 resource 요청/제한 내용을 확인합니다.
 
 [#podresources-sane-limit-resource]
 [.console-input]
@@ -599,6 +603,19 @@ oc get $PODNAME -o jsonpath='{.spec.containers[*].resources}'
 ----
 
 그런 다음 `/consume` 엔드포인트를 `curl`합니다.
+
+[.console-input]
+[source,bash,subs="+macros,+attributes"]
+----
+IP=$(oc get service myboot -o jsonpath="{.spec.clusterIP}")
+----
+
+
+[.console-input]
+[source,bash,subs="+macros,+attributes"]
+----
+PORT=$(oc get service myboot -o jsonpath="{.spec.ports[*].port}")
+----
 
 [#consume-sane-limit-resource]
 [.console-input]
@@ -658,7 +675,7 @@ oc describe $PODNAME
 [.console-input]
 [source, bash]
 ----
- oc get $PODNAME -o jsonpath='{.status.containerStatuses[0].lastState.terminated'}
+oc get $PODNAME -o jsonpath='{.status.containerStatuses[0].lastState.terminated'}
 ----
 
 [.console-output]
