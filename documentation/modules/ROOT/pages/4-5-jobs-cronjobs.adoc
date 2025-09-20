@@ -63,7 +63,7 @@ No resources found in myspace namespace.
 
 무슨 일이 일어나고 있는지 관찰할 수 있도록 다른 Terminal#2를 열고 다양한 작업을 실행할 때 어떤 일이 일어나는지 `watch` 해 보겠습니다.
 
-* Terminal#2에서 작업
+* *Terminal#2에서 실행*
 
 [.console-input]
 [source,bash,subs="+macros,+attributes"]
@@ -236,6 +236,7 @@ spec:
 
 
 * *Terminal#1 에서 수행*
+
 [.console-input]
 [source,bash,subs="+macros,+attributes"]
 ----
@@ -387,6 +388,7 @@ Events:
 
 
 * *Terminal#1에서 수행*
+
 [.console-input]
 [source,bash,subs="+macros,+attributes"]
 ----

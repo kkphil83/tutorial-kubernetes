@@ -304,7 +304,7 @@ myboot Deployment를 삭제합니다.
 [.console-input]
 [source,bash,subs="+macros,+attributes"]
 ----
-oc delete deployment 
+oc delete deployment myboot
 ----
 
 
@@ -451,15 +451,16 @@ NAME                      READY   STATUS    AGE   NODE
 myboot-7cbfbd9b89-wpddg   1/1     Running   47s   devnation-m02
 ----
 
-
 이제 NoExecution 효과를 가진 Taint를 노드에 추가합니다.
 
 * *Terminal#1에서 수행*
+
 [.console-input]
 [source,bash,subs="+macros,+attributes"]
 ----
 oc adm taint node -l devnation=%userid% color=blue:NoExecute
 ----
+
 
 이 작업을 수행하자마자 Terminal#2 watch에서 이 "일정 변경"이 발생하는 것을 볼 수 있어야 합니다.
 
@@ -495,7 +496,6 @@ NoExecute taint를 제거합니다.
 ----
 oc adm taint node -l devnation=%userid% color=blue:NoExecute-
 ----
-
 
 
 
@@ -714,9 +714,8 @@ spec:
 <1> 노드 레이블 키입니다. 2개의 노드가 이 Key로 레이블이 지정되어 있고, 동일한 값을 갖는 경우, 스케줄러는 두 노드를 동일한 토폴로지에 있는 것으로 처리합니다. 이 경우 `hostname` 은 노드마다 다른 레이블입니다.
 <2> Affinity는 'app=myboot' 라벨이 지정된 Pod와 관련됩니다.
 
-
-
 * *Terminal#1에서 수행*
+
 [.console-input]
 [source,bash,subs="+macros,+attributes"]
 ----
